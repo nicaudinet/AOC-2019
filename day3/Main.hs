@@ -2,7 +2,7 @@
 
 module Main where
 
-import Data.List (foldl', nub)
+import Data.List (foldl')
 import Data.List.Split (splitOn)
 import qualified Data.Set as S
 
@@ -22,8 +22,14 @@ parse = map parseInstr . splitOn ","
 parseInstr :: String -> Instr
 parseInstr (dir : num) = Instr (read [dir]) (read num)
 
-locations :: Loc -> Loc -> Locs
-locations (x1, y1) (x2, y2) = S.fromList
+between :: Int -> Int -> [Int]
+between a b
+  | a < b  = [a + 1 .. b]
+  | a == b = [a]
+  | a > b  = reverse [b .. a - 1]
+
+locations :: Loc -> Loc -> [Loc]
+locations (x1, y1) (x2, y2) =
   [ (a, b) | a <- between x1 x2, b <- between y1 y2 ]
 
 move :: Loc -> Instr -> Loc
@@ -34,29 +40,41 @@ move (x, y) (Instr dir amount) =
     R -> (x + amount, y)
     L -> (x - amount, y)
 
-between :: Int -> Int -> [Int]
-between a b
-  | a < b  = [a .. b]
-  | a == b = [a]
-  | a > b  = reverse [b .. a]
-
-wireLocs :: Wire -> Locs
-wireLocs = snd . foldl' go ((0, 0), [(0, 0)])
+wireLocs :: Wire -> [Loc]
+wireLocs = snd . foldl' go ((0, 0), [])
   where
-    go :: (Loc, Locs) -> Instr -> (Loc, Locs)
+    go :: (Loc, [Loc]) -> Instr -> (Loc, [Loc])
     go (current, past) instr =
       let next = move current instr
       in (next, past <> locations current next)
 
 crossings :: Wire -> Wire -> Locs
 crossings w1 w2 =
-  S.intersection (wireLocs w1) (wireLocs w2)
+  S.intersection (S.fromList $ wireLocs w1) (S.fromList $ wireLocs w2)
 
 minDistance :: Locs -> Int
-minDistance = S.findMin . S.deleteMin . S.map (\(x,y) -> abs x + abs y)
+minDistance = S.findMin . S.map (\(x,y) -> abs x + abs y)
+
+steps :: [Loc] -> Loc -> Int
+steps wire destination = go wire 0
+  where
+    go :: [Loc] -> Int -> Int
+    go (l:ls) i = if l == destination then i else go ls (i + 1)
+    go []     _ = error "Location was not in the list"
+
+minSteps :: Wire -> Wire -> Int
+minSteps w1 w2 =
+  let xs = crossings w1 w2
+      ls1 = wireLocs w1
+      ls2 = wireLocs w2
+      allSteps = S.map (\loc -> steps ls1 loc + steps ls2 loc) xs
+  in S.findMin allSteps
 
 main :: IO ()
 main = do
-  [wire1, wire2] <- lines <$> readFile "input"
-  let xs = crossings (parse wire1) (parse wire2)
+  [a, b] <- lines <$> readFile "input"
+  let w1 = parse a
+      w2 = parse b
+      xs = crossings w1 w2
   print (minDistance xs)
+  print (minSteps w1 w2)
