@@ -1,9 +1,13 @@
 module Main where
 
+import Data.List (find)
 import Data.Vector (Vector, fromList, (!), (//))
 
 type Memory = Vector Int
 type PC = Int
+
+run :: Memory -> Int
+run mem = (compute 0 mem) ! 0
 
 compute :: PC -> Memory -> Memory
 compute pc mem =
@@ -20,14 +24,32 @@ op fn mem pc =
       res = fn (mem ! in1) (mem ! in2)
   in mem // [(out, res)]
 
-fix :: Memory -> Memory
-fix mem = mem // [(1, 12), (2, 2)]
-
 parse :: String -> Memory
 parse str = fromList (read ("[" <> init str <> "]"))
+
+setNoun :: Int -> Memory -> Memory
+setNoun n mem = mem // [(1, n)]
+
+setVerb :: Int -> Memory -> Memory
+setVerb n mem = mem // [(2, n)]
+
+fix :: Memory -> Memory
+fix = setNoun 12 . setVerb 2
+
+runFix :: Int -> Int -> Memory -> Int
+runFix n v = run . setNoun n . setVerb v
+
+search :: Memory -> (Int, Int)
+search mem =
+  let outputs = [ (n, v, runFix n v mem) | n <- [0..99], v <- [0..99] ]
+      isResult (_, _, res) = res == 19690720
+      Just (n, v, _) = find isResult outputs
+  in (n, v)
 
 main :: IO ()
 main = do
   contents <- readFile "input"
-  let program = fix (parse contents)
-  print ((compute 0 program) ! 0)
+  let program = parse contents
+  print (run (fix program))
+  let (n, v) = search program
+  print (100 * n + v)
