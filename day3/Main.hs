@@ -70,6 +70,18 @@ minSteps w1 w2 =
       allSteps = S.map (\loc -> steps ls1 loc + steps ls2 loc) xs
   in S.findMin allSteps
 
+test1 :: IO ()
+test1 = do
+  let w1 = parse "R75,D30,R83,U83,L12,D49,R71,U7,L72"
+  let w2 = parse "U62,R66,U55,R34,D71,R55,D58,R83"
+  print (minSteps w1 w2) -- should be 610
+
+test2 :: IO ()
+test2 = do
+  let w1 = parse "R8,U5,L5,D3"
+  let w2 = parse "U7,R6,D4,L4"
+  print (minSteps w1 w2) -- should be 30
+
 main :: IO ()
 main = do
   [a, b] <- lines <$> readFile "input"
