@@ -68,7 +68,7 @@ minSteps w1 w2 =
       ls1 = wireLocs w1
       ls2 = wireLocs w2
       allSteps = S.map (\loc -> steps ls1 loc + steps ls2 loc) xs
-  in S.findMin allSteps
+  in S.findMin allSteps + 2 -- does not count the last steps I think
 
 test1 :: IO ()
 test1 = do
