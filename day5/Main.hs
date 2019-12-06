@@ -1,31 +1,38 @@
 module Main where
 
+import Control.Monad ((<=<))
 import Data.List (find)
 import Data.Vector (Vector, fromList, (!), (//))
 
-type MemoryVec = Vector Int
+type Memory = Vector Int
 type PC = Int
-data Memory = Memory MemoryVec PC
 
-current :: Memory -> Int
-current Memory mem pc = mem ! pc
-
-parse :: String -> MemoryVec
+parse :: String -> Memory
 parse str = fromList (read ("[" <> init str <> "]"))
 
 run :: Memory -> IO Int
-run mem = fmap (! 0) (compute mem) 
+run mem = fmap (! 0) (compute 0 mem)
 
-compute :: Memory -> IO MemoryVec
-compute mem =
-  case current mem of
-    1 -> compute (pc + 4) (op3 (+) mem pc)
-    2 -> compute (pc + 4) (op3 (*) mem pc)
-    3 -> input mem pc
-    4 -> output mem pc
+compute :: PC -> Memory -> IO Memory
+compute pc mem =
+  case mem ! pc of
+    1  -> compute (pc + 4) (op3 (+) mem pc)
+    2  -> compute (pc + 4) (op3 (*) mem pc)
+    3  -> compute (pc + 2) =<< input pc mem
+    4  -> compute (pc + 2) =<< output pc mem
     99 -> pure mem
 
+input :: PC -> Memory -> IO Memory
+input pc mem = do
+  let address = mem ! (pc + 1)
+  num <- read <$> getLine
+  pure $ mem // [(address, num)]
 
+output :: PC -> Memory -> IO Memory
+output pc mem = do
+  let address = mem ! (pc + 1)
+  print (mem ! address)
+  pure mem
 
 op3 :: (Int -> Int -> Int) -> Memory -> PC -> Memory
 op3 fn mem pc =
