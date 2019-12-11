@@ -56,52 +56,48 @@ parseInstr mem pc =
 
 parseAdd :: Modes -> Memory -> PC -> Instr
 parseAdd (m1, m2) mem pc =
-  let i1   = mem ! pc + 1
-      i2   = mem ! pc + 2
-      dest = mem ! pc + 3
+  let i1   = mem ! (pc + 1)
+      i2   = mem ! (pc + 2)
+      dest = mem ! (pc + 3)
   in Add (Value i1 m1) (Value i2 m2) dest
 
 parseMul :: Modes -> Memory -> PC -> Instr
 parseMul (m1, m2) mem pc =
-  let i1   = mem ! pc + 1
-      i2   = mem ! pc + 2
-      dest = mem ! pc + 3
+  let i1   = mem ! (pc + 1)
+      i2   = mem ! (pc + 2)
+      dest = mem ! (pc + 3)
   in Mul (Value i1 m1) (Value i2 m2) dest
 
 parseInput :: Memory -> PC -> Instr
-parseInput mem pc =
-  let dest = mem ! pc + 1
-  in Input dest
+parseInput mem pc = Input (mem ! (pc + 1))
 
 parseOutput :: Modes -> Memory -> PC -> Instr
-parseOutput (m1, _) mem pc =
-  let toPrint = mem ! pc + 1
-  in Output (Value toPrint m1)
+parseOutput (m1, _) mem pc = Output (Value (mem ! (pc + 1)) m1)
 
 parseJumpIfTrue :: Modes -> Memory -> PC -> Instr
 parseJumpIfTrue (m1, m2) mem pc =
-  let cond = mem ! pc + 1
-      dest = mem ! pc + 2
+  let cond = mem ! (pc + 1)
+      dest = mem ! (pc + 2)
   in JumpIfTrue (Value cond m1) (Value dest m2)
 
 parseJumpIfFalse :: Modes -> Memory -> PC -> Instr
 parseJumpIfFalse (m1, m2) mem pc =
-  let cond = mem ! pc + 1
-      dest = mem ! pc + 2
+  let cond = mem ! (pc + 1)
+      dest = mem ! (pc + 2)
   in JumpIfFalse (Value cond m1) (Value dest m2)
 
 parseLessThan :: Modes -> Memory -> PC -> Instr
 parseLessThan (m1, m2) mem pc =
-  let i1   = mem ! pc + 1
-      i2   = mem ! pc + 2
-      dest = mem ! pc + 3
+  let i1   = mem ! (pc + 1)
+      i2   = mem ! (pc + 2)
+      dest = mem ! (pc + 3)
   in LessThan (Value i1 m1) (Value i2 m2) dest
 
 parseEquals :: Modes -> Memory -> PC -> Instr
 parseEquals (m1, m2) mem pc =
-  let i1   = mem ! pc + 1
-      i2   = mem ! pc + 2
-      dest = mem ! pc + 3
+  let i1   = mem ! (pc + 1)
+      i2   = mem ! (pc + 2)
+      dest = mem ! (pc + 3)
   in Equals (Value i1 m1) (Value i2 m2) dest
 
 parseMode :: HasCallStack => Char -> Mode
@@ -118,7 +114,7 @@ parseModes modes    = error ("Modes \"" <> modes <> "\" failed to parse (string 
 -- | Running the program
 
 compute :: HasCallStack => PC -> Memory -> IO Memory
-compute pc mem = 
+compute pc mem =
   eval mem pc >>= \case
     (pc', Just mem') -> compute pc' mem'
     (_, Nothing)     -> pure mem
@@ -155,7 +151,7 @@ mul v1 v2 dest mem pc = do
   pure (pc + 4, mem')
 
 input :: HasCallStack => Int -> Memory -> PC -> IO (PC, Maybe Memory)
-input dest mem pc = do
+input dest mem pc =  do
   input <- read <$> getLine
   let mem' = Just (mem // [(dest, input)])
   pure (pc + 2, mem')
@@ -182,7 +178,7 @@ lessThan :: Value -> Value -> Int -> Memory -> PC -> IO (PC, Maybe Memory)
 lessThan v1 v2 dest mem pc = do
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
-      mem' = Just (mem // [(dest, if i1 <= i2 then 1 else 0)])
+      mem' = Just (mem // [(dest, if i1 < i2 then 1 else 0)])
   pure (pc + 4, mem')
 
 equals :: Value -> Value -> Int -> Memory -> PC -> IO (PC, Maybe Memory)
@@ -199,11 +195,5 @@ main :: HasCallStack => IO ()
 main = do
   contents <- parseContents <$> readFile "input"
   let mem = fromList contents
-  compute 0 mem
-  pure ()
-
-test :: IO ()
-test = do 
-  let mem = fromList [3,9,8,9,10,9,4,9,99,-1,8]
   compute 0 mem
   pure ()
