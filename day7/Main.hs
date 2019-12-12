@@ -132,16 +132,16 @@ parseModes modes    = error ("Modes \"" <> modes <> "\" failed to parse (string 
 
 -- | Running the program
 
-compute :: State -> IO (Array, IOBuffer)
+compute :: State -> IOBuffer
 compute current =
-  eval current >>= \case
+  case eval current of
     Just new -> compute new
-    Nothing  -> pure ((stateArray current), stateOutput current)
+    Nothing  -> stateOutput current
 
-eval :: State -> IO (Maybe State)
+eval :: State -> Maybe State
 eval state = go (parseInstr $ stateMemory state) state
   where
-    go :: Instr -> State -> IO (Maybe State)
+    go :: Instr -> State -> Maybe State
     go = \case
       Add v1 v2 out    -> evalAdd v1 v2 out
       Mul v1 v2 out    -> evalMul v1 v2 out
@@ -151,62 +151,60 @@ eval state = go (parseInstr $ stateMemory state) state
       JumpIfFalse c d  -> evalJumpIfFalse c d
       LessThan v1 v2 o -> evalLessThan v1 v2 o
       Equals v1 v2 o   -> evalEquals v1 v2 o
-      Halt             -> const evalHalt
+      Halt             -> const Nothing
 
-evalAdd :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalAdd v1 v2 dest (State mem pc ioIn ioOut) = do
+evalAdd :: Value -> Value -> Int -> State -> Maybe State
+evalAdd v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 + i2)]
-  pure $ Just (State newMem (pc + 4) ioIn ioOut)
+  in Just (State newMem (pc + 4) ioIn ioOut)
     
-evalMul :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalMul v1 v2 dest (State mem pc ioIn ioOut) = do
+evalMul :: Value -> Value -> Int -> State -> Maybe State
+evalMul v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 * i2)]
-  pure $ Just (State newMem (pc + 4) ioIn ioOut)
+  in Just (State newMem (pc + 4) ioIn ioOut)
 
-evalInput :: Int -> State -> IO (Maybe State)
-evalInput dest (State mem pc ioIn ioOut) =  do
-  input <- read <$> getLine
-  let newMem = mem // [(dest, input)]
-  pure $ Just (State newMem (pc + 2) ioIn ioOut)
+evalInput :: Int -> State -> Maybe State
+evalInput dest (State mem pc ioIn ioOut) =
+  let newMem = mem // [(dest, head ioIn)]
+  in Just (State newMem (pc + 2) ioIn ioOut)
 
-evalOutput :: Value -> State -> IO (Maybe State)
-evalOutput val (State mem pc ioIn ioOut) = do
-  print (fetch val mem)
-  pure $ Just (State mem (pc + 2) ioIn ioOut)
+evalOutput :: Value -> State -> Maybe State
+evalOutput val (State mem pc ioIn ioOut) =
+  Just (State mem (pc + 2) ioIn (fetch val mem : ioOut))
 
-evalJumpIfTrue :: Value -> Value -> State -> IO (Maybe State)
-evalJumpIfTrue c d (State mem pc ioIn ioOut) = do
+evalJumpIfTrue :: Value -> Value -> State -> Maybe State
+evalJumpIfTrue c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  pure $ Just (if cond /= 0 then trueState else falseState)
+  in Just (if cond /= 0 then trueState else falseState)
 
-evalJumpIfFalse :: Value -> Value -> State -> IO (Maybe State)
-evalJumpIfFalse c d (State mem pc ioIn ioOut) = do
+evalJumpIfFalse :: Value -> Value -> State -> Maybe State
+evalJumpIfFalse c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  pure $ Just (if cond == 0 then trueState else falseState)
+  in Just (if cond == 0 then trueState else falseState)
 
-evalLessThan :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalLessThan v1 v2 dest (State mem pc ioIn ioOut) = do
+evalLessThan :: Value -> Value -> Int -> State -> Maybe State
+evalLessThan v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 < i2 then 1 else 0)]
-  pure $ Just (State newMem (pc + 4) ioIn ioOut)
+  in Just (State newMem (pc + 4) ioIn ioOut)
 
-evalEquals :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalEquals v1 v2 dest (State mem pc ioIn ioOut) = do
+evalEquals :: Value -> Value -> Int -> State -> Maybe State
+evalEquals v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
-  pure $ Just (State newMem (pc + 4) ioIn ioOut)
+  in Just (State newMem (pc + 4) ioIn ioOut)
 
 evalHalt :: IO (Maybe State)
 evalHalt = pure Nothing
