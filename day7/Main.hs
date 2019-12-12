@@ -129,15 +129,16 @@ parseModes :: String -> (Mode, Mode)
 parseModes []       = (   Position,    Position)
 parseModes (x:[])   = (parseMode x,    Position)
 parseModes (x:y:[]) = (parseMode y, parseMode x)
-parseModes modes    = error ("Modes \"" <> modes <> "\" failed to parse (string is likely too long)")
+parseModes modes =
+  error ("Modes \"" <> modes <> "\" failed to parse (string is likely too long)")
 
 -- | Running the program
 
-compute :: State -> IOBuffer
+compute :: State -> State
 compute current =
   case eval current of
     Just new -> compute new
-    Nothing  -> stateOutput current
+    Nothing  -> current
 
 eval :: State -> Maybe State
 eval state = go (parseInstr $ stateMemory state) state
@@ -207,11 +208,11 @@ evalEquals v1 v2 dest (State mem pc ioIn ioOut) =
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
   in Just (State newMem (pc + 4) ioIn ioOut)
 
--- * Amp things
+-- * Amp things (part 1)
 
 amp :: Array -> Int -> Int -> Int
 amp array phase inputSignal =
-  head . compute $ State array 0 [phase, inputSignal] []
+  head . stateOutput . compute $ State array 0 [phase, inputSignal] []
 
 ampChain :: Array -> [Int] -> Int
 ampChain array phases =
@@ -219,6 +220,14 @@ ampChain array phases =
 
 maxSignal :: Array -> Int
 maxSignal array = maximum $ map (ampChain array) (permutations [0..4])
+
+-- * Amp things (part 2)
+
+amplifier :: State -> Int -> Int -> (Int, State)
+amplifier (State mem pc ioIn ioOut) phase inputSignal =
+  let 
+
+-- * Main
 
 getInput :: IO Array
 getInput = fromList <$> parseContents <$> readFile "input"
