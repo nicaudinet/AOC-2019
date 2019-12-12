@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -26,16 +27,32 @@ data Instr
   | Halt
 
 type Modes = (Mode, Mode)
-type Memory = Vector Int
+type Array = Vector Int
 type PC = Int
-type State = (Memory, PC)
+type Memory = (Array, PC)
+
+type IOBuffer = [Int]
+data State = State
+  { stateArray  :: Array
+  , statePC     :: PC
+  , stateInput  :: IOBuffer
+  , stateOutput :: IOBuffer
+  }
+
+fetch :: Value -> Array -> Int
+fetch (Value addr Position) mem = mem ! addr
+fetch (Value val Immediate) _ = val
+
+stateMemory :: State -> Memory
+stateMemory state =
+  (stateArray state, statePC state)
 
 -- | Parsing the instructions
 
 parseContents :: String -> [Int]
 parseContents str = read ("[" <> init str <> "]")
 
-parseInstr :: State -> Instr
+parseInstr :: Memory -> Instr
 parseInstr (mem, pc) =
   let 
       opInt = show (mem ! pc)
@@ -43,7 +60,7 @@ parseInstr (mem, pc) =
       modes = parseModes rest
   in parseOp (read op) modes (mem, pc)
 
-parseOp :: Int -> Modes -> State -> Instr
+parseOp :: Int -> Modes -> Memory -> Instr
 parseOp = \case
   1  -> parseAdd
   2  -> parseMul
@@ -56,46 +73,46 @@ parseOp = \case
   99 -> (const . const) Halt
   o  -> error ("Op \"" <> show o <> "\" failed to parse (it is not one of 1, 2, 3, 4, 5, 6, 7, 8, 99)")
 
-parseAdd :: Modes -> State -> Instr
+parseAdd :: Modes -> Memory -> Instr
 parseAdd (m1, m2) (mem, pc) =
   let i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
   in Add (Value i1 m1) (Value i2 m2) dest
 
-parseMul :: Modes -> State -> Instr
+parseMul :: Modes -> Memory -> Instr
 parseMul (m1, m2) (mem, pc) =
   let i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
   in Mul (Value i1 m1) (Value i2 m2) dest
 
-parseInput :: State -> Instr
+parseInput :: Memory -> Instr
 parseInput (mem, pc) = Input (mem ! (pc + 1))
 
-parseOutput :: Modes -> State -> Instr
+parseOutput :: Modes -> Memory -> Instr
 parseOutput (m1, _) (mem, pc) = Output (Value (mem ! (pc + 1)) m1)
 
-parseJumpIfTrue :: Modes -> State -> Instr
+parseJumpIfTrue :: Modes -> Memory -> Instr
 parseJumpIfTrue (m1, m2) (mem, pc) =
   let cond = mem ! (pc + 1)
       dest = mem ! (pc + 2)
   in JumpIfTrue (Value cond m1) (Value dest m2)
 
-parseJumpIfFalse :: Modes -> State -> Instr
+parseJumpIfFalse :: Modes -> Memory -> Instr
 parseJumpIfFalse (m1, m2) (mem, pc) =
   let cond = mem ! (pc + 1)
       dest = mem ! (pc + 2)
   in JumpIfFalse (Value cond m1) (Value dest m2)
 
-parseLessThan :: Modes -> State -> Instr
+parseLessThan :: Modes -> Memory -> Instr
 parseLessThan (m1, m2) (mem, pc) =
   let i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
   in LessThan (Value i1 m1) (Value i2 m2) dest
 
-parseEquals :: Modes -> State -> Instr
+parseEquals :: Modes -> Memory -> Instr
 parseEquals (m1, m2) (mem, pc) =
   let i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
@@ -115,82 +132,81 @@ parseModes modes    = error ("Modes \"" <> modes <> "\" failed to parse (string 
 
 -- | Running the program
 
-compute :: State -> IO Memory
-compute (mem, pc) =
-  eval (mem, pc) >>= \case
-    Just newState -> compute newState
-    Nothing       -> pure mem
+compute :: State -> IO (Array, IOBuffer)
+compute current =
+  eval current >>= \case
+    Just new -> compute new
+    Nothing  -> pure ((stateArray current), stateOutput current)
 
 eval :: State -> IO (Maybe State)
-eval (mem, pc) = operation (mem, pc)
+eval state = go (parseInstr $ stateMemory state) state
   where
-    operation :: State -> IO (Maybe State)
-    operation =
-      case parseInstr (mem, pc) of
-        Add v1 v2 out    -> evalAdd v1 v2 out
-        Mul v1 v2 out    -> evalMul v1 v2 out
-        Input dest       -> evalInput dest
-        Output val       -> evalOutput val
-        JumpIfTrue c d   -> evalJumpIfTrue c d
-        JumpIfFalse c d  -> evalJumpIfFalse c d
-        LessThan v1 v2 o -> evalLessThan v1 v2 o
-        Equals v1 v2 o   -> evalEquals v1 v2 o
-        Halt             -> const evalHalt
-
-fetch :: Value -> Memory -> Int
-fetch (Value addr Position) mem = mem ! addr
-fetch (Value val Immediate) _ = val
+    go :: Instr -> State -> IO (Maybe State)
+    go = \case
+      Add v1 v2 out    -> evalAdd v1 v2 out
+      Mul v1 v2 out    -> evalMul v1 v2 out
+      Input dest       -> evalInput dest
+      Output val       -> evalOutput val
+      JumpIfTrue c d   -> evalJumpIfTrue c d
+      JumpIfFalse c d  -> evalJumpIfFalse c d
+      LessThan v1 v2 o -> evalLessThan v1 v2 o
+      Equals v1 v2 o   -> evalEquals v1 v2 o
+      Halt             -> const evalHalt
 
 evalAdd :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalAdd v1 v2 dest (mem, pc) = do
+evalAdd v1 v2 dest (State mem pc ioIn ioOut) = do
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 + i2)]
-  pure $ Just (newMem, pc + 4)
+  pure $ Just (State newMem (pc + 4) ioIn ioOut)
     
 evalMul :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalMul v1 v2 dest (mem, pc) = do
+evalMul v1 v2 dest (State mem pc ioIn ioOut) = do
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 * i2)]
-  pure $ Just (newMem, pc + 4)
+  pure $ Just (State newMem (pc + 4) ioIn ioOut)
 
 evalInput :: Int -> State -> IO (Maybe State)
-evalInput dest (mem, pc) =  do
+evalInput dest (State mem pc ioIn ioOut) =  do
   input <- read <$> getLine
   let newMem = mem // [(dest, input)]
-  pure $ Just (newMem, pc + 2)
+  pure $ Just (State newMem (pc + 2) ioIn ioOut)
 
 evalOutput :: Value -> State -> IO (Maybe State)
-evalOutput val (mem, pc) = do
+evalOutput val (State mem pc ioIn ioOut) = do
   print (fetch val mem)
-  pure $ Just (mem, pc + 2)
+  pure $ Just (State mem (pc + 2) ioIn ioOut)
 
 evalJumpIfTrue :: Value -> Value -> State -> IO (Maybe State)
-evalJumpIfTrue c d (mem, pc) = do
+evalJumpIfTrue c d (State mem pc ioIn ioOut) = do
   let cond = fetch c mem
       dest = fetch d mem
-  pure $ Just (if cond /= 0 then (mem, dest) else (mem, pc + 3))
+      trueState  = State mem dest ioIn ioOut
+      falseState = State mem (pc + 3) ioIn ioOut
+  pure $ Just (if cond /= 0 then trueState else falseState)
 
 evalJumpIfFalse :: Value -> Value -> State -> IO (Maybe State)
-evalJumpIfFalse c d (mem, pc) = do
+evalJumpIfFalse c d (State mem pc ioIn ioOut) = do
   let cond = fetch c mem
       dest = fetch d mem
-  pure $ Just (if cond == 0 then (mem, dest) else (mem, pc + 3))
+      trueState  = State mem dest ioIn ioOut
+      falseState = State mem (pc + 3) ioIn ioOut
+  pure $ Just (if cond == 0 then trueState else falseState)
 
 evalLessThan :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalLessThan v1 v2 dest (mem, pc) = do
+evalLessThan v1 v2 dest (State mem pc ioIn ioOut) = do
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 < i2 then 1 else 0)]
-  pure $ Just (newMem, pc + 4)
+  pure $ Just (State newMem (pc + 4) ioIn ioOut)
 
 evalEquals :: Value -> Value -> Int -> State -> IO (Maybe State)
-evalEquals v1 v2 dest (mem, pc) = do
+evalEquals v1 v2 dest (State mem pc ioIn ioOut) = do
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
-  pure $ Just (newMem, pc + 4)
+  pure $ Just (State newMem (pc + 4) ioIn ioOut)
 
 evalHalt :: IO (Maybe State)
 evalHalt = pure Nothing
@@ -199,5 +215,5 @@ main :: IO ()
 main = do
   contents <- parseContents <$> readFile "input"
   let mem = fromList contents
-  compute (mem, 0)
+  compute (State mem 0 [] [])
   pure ()
