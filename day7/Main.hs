@@ -4,7 +4,8 @@
 module Main where
 
 import Control.Monad ((<=<))
-import Data.List (find, splitAt)
+import Data.Function ((&))
+import Data.List (find, splitAt, foldl')
 import Data.Vector (Vector, fromList, (!), (//))
 
 data Mode
@@ -206,12 +207,20 @@ evalEquals v1 v2 dest (State mem pc ioIn ioOut) =
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
   in Just (State newMem (pc + 4) ioIn ioOut)
 
-evalHalt :: IO (Maybe State)
-evalHalt = pure Nothing
+-- * Amp things
+
+amp :: Array -> Int -> Int -> Int
+amp array phase inputSignal =
+  head . compute $ State array 0 [phase, inputSignal] []
+
+ampChain :: Array -> [Int] -> Int
+ampChain array phases =
+  foldl' (&) 0 (map (amp array) phases)
+
+getInput :: IO Array
+getInput = fromList <$> parseContents <$> readFile "input"
 
 main :: IO ()
 main = do
-  contents <- parseContents <$> readFile "input"
-  let mem = fromList contents
-  compute (State mem 0 [] [])
-  pure ()
+  mem <- getInput
+  print (ampChain mem [4,3,2,1,0])
