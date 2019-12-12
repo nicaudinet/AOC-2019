@@ -5,7 +5,7 @@ module Main where
 
 import Control.Monad ((<=<))
 import Data.Function ((&))
-import Data.List (find, splitAt, foldl')
+import Data.List (find, splitAt, foldl', permutations)
 import Data.Vector (Vector, fromList, (!), (//))
 
 data Mode
@@ -171,7 +171,7 @@ evalMul v1 v2 dest (State mem pc ioIn ioOut) =
 evalInput :: Int -> State -> Maybe State
 evalInput dest (State mem pc ioIn ioOut) =
   let newMem = mem // [(dest, head ioIn)]
-  in Just (State newMem (pc + 2) ioIn ioOut)
+  in Just (State newMem (pc + 2) (tail ioIn) ioOut)
 
 evalOutput :: Value -> State -> Maybe State
 evalOutput val (State mem pc ioIn ioOut) =
@@ -217,10 +217,11 @@ ampChain :: Array -> [Int] -> Int
 ampChain array phases =
   foldl' (&) 0 (map (amp array) phases)
 
+maxSignal :: Array -> Int
+maxSignal array = maximum $ map (ampChain array) (permutations [0..4])
+
 getInput :: IO Array
 getInput = fromList <$> parseContents <$> readFile "input"
 
 main :: IO ()
-main = do
-  mem <- getInput
-  print (ampChain mem [4,3,2,1,0])
+main = getInput >>= print . maxSignal
