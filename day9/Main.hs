@@ -10,31 +10,39 @@ import Data.Function ((&))
 import Data.List (find, splitAt, foldl', permutations)
 import Data.Vector (Vector, fromList, (!), (//), replicate)
 
-data Mode
-  = Position
-  | Immediate
-  | Relative
+data InMode
+  = InPosition
+  | InImmediate
+  | InRelative
   deriving Show
 
-data Value = Value Integer Mode
+data OutMode
+  = OutPosition
+  | OutRelative
+  deriving Show
+
+data InValue = InValue Integer InMode
+  deriving Show
+
+data OutValue = OutValue Integer OutMode
   deriving Show
 
 data Instr
-  = Add Value Value Value
-  | Mul Value Value Value
-  | Input Value
-  | Output Value
-  | JumpIfTrue Value Value
-  | JumpIfFalse Value Value
-  | LessThan Value Value Value
-  | Equals Value Value Value
-  | RB Value
+  = Add InValue InValue OutValue
+  | Mul InValue InValue OutValue
+  | Input OutValue
+  | Output InValue
+  | JumpIfTrue InValue InValue
+  | JumpIfFalse InValue InValue
+  | LessThan InValue InValue OutValue
+  | Equals InValue InValue OutValue
+  | RB InValue
   | Halt
 
 data Status = Running | Halted
   deriving Eq
 
-type Modes = (Mode, Mode, Mode)
+type Modes = String
 type Array = Vector Integer
 type PC = Int
 type RelativeBase = Int
@@ -57,18 +65,21 @@ stateMemory :: ComputerState -> Memory
 stateMemory state =
   (stateArray state, statePC state)
 
-memory :: Computer Memory
-memory = get >>= pure . stateMemory
-
-fetch :: Value -> Computer Integer
-fetch (Value addr Relative) = do
-  mem <- stateArray <$> get
-  rb  <- stateRB <$> get
+fetchIn :: InValue -> Computer Integer
+fetchIn (InValue addr InRelative) = do
+  mem <- gets stateArray
+  rb  <- gets stateRB
   pure $ mem ! (fromInteger addr + rb)
-fetch (Value addr Position) = do
-  mem <- stateArray <$> get
+fetchIn (InValue addr InPosition) = do
+  mem <- gets stateArray
   pure $ mem ! (fromInteger addr)
-fetch (Value val Immediate) = pure (toInteger val)
+fetchIn (InValue val InImmediate) = pure (toInteger val)
+
+fetchOut :: OutValue -> Computer Integer
+fetchOut (OutValue dest OutPosition) = pure dest
+fetchOut (OutValue dest OutRelative) = do
+  rb <- toInteger <$> gets stateRB
+  pure (dest + rb)
 
 update :: (Integer, Integer) -> Computer ()
 update (dest, value) = do
@@ -108,7 +119,7 @@ incRB increment = do
 isRunning :: ComputerState -> Bool
 isRunning state = status state == Running
 
--- | Parsing the instructions
+-- * Parsing the instructions
 
 parseContents :: String -> Array
 parseContents str = fromList $ read ("[" <> init str <> "]")
@@ -116,22 +127,35 @@ parseContents str = fromList $ read ("[" <> init str <> "]")
 parseInstr :: Memory -> Instr
 parseInstr (mem, pc) =
   let opInt = show (mem ! pc)
-      (rest, op) = splitAt (length opInt - 2) opInt
-      modes = parseModes rest
+      (modes, op) = splitAt (length opInt - 2) opInt
   in parseOp (read op) modes (mem, pc)
 
-parseMode :: Char -> Mode
-parseMode '0' = Position
-parseMode '1' = Immediate
-parseMode '2' = Relative
-parseMode c   = error ("Mode \"" <> [c] <> "\" failed to parse")
+parseModeIn :: Char -> InMode
+parseModeIn '0' = InPosition
+parseModeIn '1' = InImmediate
+parseModeIn '2' = InRelative
+parseModeIn c   = error ("Mode \"" <> [c] <> "\" failed to parse")
 
-parseModes :: String -> Modes
-parseModes          []  = (   Position,    Position, Position)
-parseModes       (x:[]) = (parseMode x,    Position, Position)
-parseModes     (y:x:[]) = (parseMode x, parseMode y, Position)
-parseModes ('2':y:x:[]) = (parseMode x, parseMode y, Relative)
-parseModes modes =
+parseOneModeIn :: String -> InMode
+parseOneModeIn []    = InPosition
+parseOneModeIn ['1'] = InImmediate
+parseOneModeIn ['2'] = InRelative
+
+parseOneModeOut :: String -> OutMode
+parseOneModeOut []    = OutPosition
+parseOneModeOut ['2'] = OutRelative
+
+parseTwoModes :: String -> (InMode, InMode)
+parseTwoModes      []  = (   InPosition,    InPosition)
+parseTwoModes   (x:[]) = (parseModeIn x,    InPosition)
+parseTwoModes (y:x:[]) = (parseModeIn x, parseModeIn y)
+
+parseThreeModes :: String -> (InMode, InMode, OutMode)
+parseThreeModes          []  = (   InPosition,    InPosition, OutPosition)
+parseThreeModes       (x:[]) = (parseModeIn x,    InPosition, OutPosition)
+parseThreeModes     (y:x:[]) = (parseModeIn x, parseModeIn y, OutPosition)
+parseThreeModes ('2':y:x:[]) = (parseModeIn x, parseModeIn y, OutRelative)
+parseThreeModes modes =
   error ("Modes \"" <> modes <> "\" failed to parse (string is likely too long)")
 
 parseOp :: Int -> Modes -> Memory -> Instr
@@ -149,57 +173,67 @@ parseOp = \case
   o  -> error ("Op \"" <> show o <> "\" failed to parse")
 
 parseAdd :: Modes -> Memory -> Instr
-parseAdd (m1, m2, m3) (mem, pc) =
-  let i1   = mem ! (pc + 1)
+parseAdd modes (mem, pc) =
+  let (m1, m2, m3) = parseThreeModes modes
+      i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
-  in Add (Value i1 m1) (Value i2 m2) (Value dest m3)
+  in Add (InValue i1 m1) (InValue i2 m2) (OutValue dest m3)
 
 parseMul :: Modes -> Memory -> Instr
-parseMul (m1, m2, m3) (mem, pc) =
-  let i1   = mem ! (pc + 1)
+parseMul modes (mem, pc) =
+  let (m1, m2, m3) = parseThreeModes modes
+      i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
-  in Mul (Value i1 m1) (Value i2 m2) (Value dest m3)
+  in Mul (InValue i1 m1) (InValue i2 m2) (OutValue dest m3)
 
 parseInput :: Modes -> Memory -> Instr
-parseInput (m1, _, _) (mem, pc) =
-  let dest = mem ! (pc + 1)
-  in Input (Value dest m1)
+parseInput mode (mem, pc) =
+  let m1 = parseOneModeOut mode
+      dest = mem ! (pc + 1)
+  in Input (OutValue dest m1)
 
 parseOutput :: Modes -> Memory -> Instr
-parseOutput (m1, _, _) (mem, pc) = Output (Value (mem ! (pc + 1)) m1)
+parseOutput mode (mem, pc) =
+  let m1 = parseOneModeIn mode
+  in Output (InValue (mem ! (pc + 1)) m1)
 
 parseJumpIfTrue :: Modes -> Memory -> Instr
-parseJumpIfTrue (m1, m2, _) (mem, pc) =
-  let cond = mem ! (pc + 1)
+parseJumpIfTrue modes (mem, pc) =
+  let (m1, m2) = parseTwoModes modes
+      cond = mem ! (pc + 1)
       dest = mem ! (pc + 2)
-  in JumpIfTrue (Value cond m1) (Value dest m2)
+  in JumpIfTrue (InValue cond m1) (InValue dest m2)
 
 parseJumpIfFalse :: Modes -> Memory -> Instr
-parseJumpIfFalse (m1, m2, _) (mem, pc) =
-  let cond = mem ! (pc + 1)
+parseJumpIfFalse modes (mem, pc) =
+  let (m1, m2) = parseTwoModes modes
+      cond = mem ! (pc + 1)
       dest = mem ! (pc + 2)
-  in JumpIfFalse (Value cond m1) (Value dest m2)
+  in JumpIfFalse (InValue cond m1) (InValue dest m2)
 
 parseLessThan :: Modes -> Memory -> Instr
-parseLessThan (m1, m2, m3) (mem, pc) =
-  let i1   = mem ! (pc + 1)
+parseLessThan modes (mem, pc) =
+  let (m1, m2, m3) = parseThreeModes modes
+      i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
-  in LessThan (Value i1 m1) (Value i2 m2) (Value dest m3)
+  in LessThan (InValue i1 m1) (InValue i2 m2) (OutValue dest m3)
 
 parseEquals :: Modes -> Memory -> Instr
-parseEquals (m1, m2, m3) (mem, pc) =
-  let i1   = mem ! (pc + 1)
+parseEquals modes (mem, pc) =
+  let (m1, m2, m3) = parseThreeModes modes
+      i1   = mem ! (pc + 1)
       i2   = mem ! (pc + 2)
       dest = mem ! (pc + 3)
-  in Equals (Value i1 m1) (Value i2 m2) (Value dest m3)
+  in Equals (InValue i1 m1) (InValue i2 m2) (OutValue dest m3)
 
 parseRB :: Modes -> Memory -> Instr
-parseRB (m1, _, _) (mem, pc) =
-  let v = mem ! (pc + 1)
-  in RB (Value v m1)
+parseRB mode (mem, pc) =
+  let m1 = parseOneModeIn mode
+      v = mem ! (pc + 1)
+  in RB (InValue v m1)
 
 -- | Running the program
 
@@ -212,7 +246,7 @@ run :: ComputerState -> ComputerState
 run = fixState compute
 
 compute :: Computation
-compute = fmap parseInstr memory >>= \case
+compute = fmap parseInstr (gets stateMemory) >>= \case
   Add v1 v2 out    -> evalAdd v1 v2 out
   Mul v1 v2 out    -> evalMul v1 v2 out
   Input dest       -> evalInput dest
@@ -224,70 +258,70 @@ compute = fmap parseInstr memory >>= \case
   RB val           -> evalRB val
   Halt             -> evalHalt
 
-evalAdd :: Value -> Value -> Value -> Computation
+evalAdd :: InValue -> InValue -> OutValue -> Computation
 evalAdd v1 v2 v3 = do
-  i1 <- fetch v1
-  i2 <- fetch v2
-  dest <- fetch v3
+  i1 <- fetchIn v1
+  i2 <- fetchIn v2
+  dest <- fetchOut v3
   update (dest, i1 + i2)
   incPC 4
 
-evalMul :: Value -> Value -> Value -> Computation
+evalMul :: InValue -> InValue -> OutValue -> Computation
 evalMul v1 v2 v3 = do
-  i1 <- fetch v1
-  i2 <- fetch v2
-  dest <- fetch v3
+  i1 <- fetchIn v1
+  i2 <- fetchIn v2
+  dest <- fetchOut v3
   update (dest, i1 * i2)
   incPC 4
 
-evalInput :: Value -> Computation
+evalInput :: OutValue -> Computation
 evalInput value = do
-  dest <- fetch value
+  dest <- fetchOut value
   input <- consume
   update (dest, input)
   incPC 2
 
-evalOutput :: Value -> Computation
+evalOutput :: InValue -> Computation
 evalOutput val = do
-  output <- fetch val
+  output <- fetchIn val
   write output
   incPC 2
 
-evalJumpIfTrue :: Value -> Value -> Computation
+evalJumpIfTrue :: InValue -> InValue -> Computation
 evalJumpIfTrue v1 v2 = do
-  cond <- fetch v1
-  dest <- fetch v2
+  cond <- fetchIn v1
+  dest <- fetchIn v2
   if cond /= 0
   then setPC dest
   else incPC 3
 
-evalJumpIfFalse :: Value -> Value -> Computation
+evalJumpIfFalse :: InValue -> InValue -> Computation
 evalJumpIfFalse v1 v2 = do
-  cond <- fetch v1
-  dest <- fetch v2
+  cond <- fetchIn v1
+  dest <- fetchIn v2
   if cond == 0
   then setPC dest
   else incPC 3
 
-evalLessThan :: Value -> Value -> Value -> Computation
+evalLessThan :: InValue -> InValue -> OutValue -> Computation
 evalLessThan v1 v2 v3 = do
-  i1 <- fetch v1
-  i2 <- fetch v2
-  dest <- fetch v3
+  i1 <- fetchIn v1
+  i2 <- fetchIn v2
+  dest <- fetchOut v3
   update (dest, if i1 < i2 then 1 else 0)
   incPC 4
 
-evalEquals :: Value -> Value -> Value -> Computation
+evalEquals :: InValue -> InValue -> OutValue -> Computation
 evalEquals v1 v2 v3 = do
-  i1 <- fetch v1
-  i2 <- fetch v2
-  dest <- fetch v3
+  i1 <- fetchIn v1
+  i2 <- fetchIn v2
+  dest <- fetchOut v3
   update (dest, if i1 == i2 then 1 else 0)
   incPC 4
 
-evalRB :: Value -> Computation
+evalRB :: InValue -> Computation
 evalRB val = do
-  offset <- fetch val
+  offset <- fetchIn val
   incRB offset
   incPC 2
 
@@ -302,11 +336,12 @@ getInput :: IO Array
 getInput = parseContents <$> readFile "input"
 
 memorySize :: Int
-memorySize = 100000
+memorySize = 1000
 
 main :: IO ()
 main = do
   mem <- (<> replicate memorySize 0) <$> getInput
-  let initComputerState = ComputerState mem 0 [1] [] 0 Running
-  print (reverse . stateOutput $ run initComputerState)
-  
+  let initComputerState1 = ComputerState mem 0 [1] [] 0 Running
+  let initComputerState2 = ComputerState mem 0 [2] [] 0 Running
+  print (reverse . stateOutput $ run initComputerState1)
+  print (reverse . stateOutput $ run initComputerState2)

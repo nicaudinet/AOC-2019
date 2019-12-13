@@ -25,4 +25,5 @@ executable day9
     , mtl
     , vector
   -- hs-source-dirs:
+  ghc-options: -O2
   default-language:    Haskell2010
