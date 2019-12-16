@@ -1,3 +1,7 @@
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE DeriveFunctor #-}
+
 module Main where
 
 import Data.Bifunctor (bimap)
@@ -6,122 +10,111 @@ import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Debug.Trace
 
-data Area = Empty | Asteroid
-  deriving Eq
+data Asteroid = Empty | Asteroid
+  deriving (Eq, Show)
 
-parseArea :: Char -> Area
-parseArea '.' = Empty
-parseArea '#' = Asteroid
+parseAsteroid :: Char -> Asteroid
+parseAsteroid '.' = Empty
+parseAsteroid '#' = Asteroid
 
-showArea :: Area -> Char
-showArea Empty = '.'
-showArea Asteroid = '#'
+showAsteroid :: Asteroid -> Char
+showAsteroid Empty = '.'
+showAsteroid Asteroid = '#'
 
 type Coord = (Int, Int)
-type Grid = Vector (Vector Area)
-type Bounds = ((Int, Int), (Int, Int))
 
-parseGrid :: String -> Grid
-parseGrid = V.fromList . map V.fromList . map (map parseArea) . lines
+newtype Grid a = Grid { unGrid :: (Vector (Vector a)) }
+  deriving (Show, Functor)
 
-bounds :: Grid -> Bounds
-bounds grid = ((0, 0), (maxX, maxY))
+parseGrid :: String -> Grid Asteroid
+parseGrid = Grid . V.fromList . map (V.fromList . map parseAsteroid) . lines
+
+cell :: Grid a -> Coord -> a
+cell (Grid grid) (x,y) = (grid ! y) ! x
+
+bounds :: Grid a -> (Int, Int)
+bounds (Grid grid) = (length (V.head grid), length grid)
+
+translate :: Coord -> Coord -> Coord
+translate (x,y) = bimap (subtract x) (subtract y)
+
+coords :: Grid a -> Grid Coord
+coords grid = Grid (fmap makeRow [0..(y-1)])
+  where 
+    (x,y) = bounds grid
+    makeRow y = V.fromList [ (a,y) | a <- [0..(x-1)] ]
+
+flatten :: Grid a -> [a]
+flatten (Grid grid) = concat (map V.toList (V.toList grid))
+
+-- Euclid's algorithm to find the Lowest Common demonimator of two integers
+euclid :: Int -> Int -> Maybe Int
+euclid x y
+  | a <= 0 = Nothing
+  | b <= 0 = Nothing
+  | a == b = Just a
+  | True   = euclid b (a - b)
   where
-    maxX = V.length (V.head grid) - 1
-    maxY = V.length grid - 1
+    a = max x y
+    b = min x y
 
-cell :: Grid -> Coord -> Area
-cell grid (x,y) =
-  if x < minX || x > maxX
-  then Empty
-  else
-    if y < minY || y > maxY
-    then Empty
-    else (grid ! y) ! x
-  where ((minX, minY), (maxX, maxY)) = bounds grid
+range :: Int -> Int -> [Int]
+range x y = [ (min x y + 1) .. (max x y - 1) ]
 
-surrounding :: Coord -> Int -> [Coord]
-surrounding (x,y) n = outer \\ inner
+-- All the points between the coordinate and the origin in a straight line for a
+-- coordinate with only natural numbers
+between :: Coord -> [Coord]
+between (0,0) = []
+between (x,0) = zip (range 0 x) (repeat 0)
+between (0,y) = zip (repeat 0) (range 0 y)
+between (x,y) = zip [x', 2*x' .. (x - x')] [y', 2*y' .. (y - y')]
   where
-    outerNs = [(-n)..n]
-    innerNs = [(1-n)..(n-1)]
-    outer = [ (x+a, y+b) | a <- outerNs, b <- outerNs ]
-    inner = [ (x+a, y+b) | a <- innerNs, b <- innerNs ]
+    Just lcd = euclid (abs x) (abs y)
+    x' = x `div` lcd
+    y' = y `div` lcd
 
--- isMultiple :: Int -> Int -> Bool
--- isMultiple 0 0 = True
--- isMultiple _ 0 = False
--- isMultiple a b = a `mod` b == 0
+betweens :: Coord -> Coord -> [Coord]
+betweens (x,y) = fmap (translate (-x,-y)) . between . translate (x,y)
 
-gradient :: Coord -> Coord -> Double
-gradient (xx, xy) (ax, ay)
-  | xx - ax == 0 = 1000000000
-  | otherwise    = (fromIntegral $ ay - xy) / (fromIntegral $ ax - xx)
+visible :: Grid Asteroid -> Coord -> Coord -> Bool
+visible asteroids center coord
+  | center == coord = False
+  | cell asteroids coord == Empty = False
+  | otherwise = all ((== Empty) . cell asteroids) (betweens center coord)
 
-bigger :: Coord -> Coord -> Coord -> Bool
-bigger (xx, xy) (ax, ay) (bx, by) =
-  let aTox = (abs $ xx - ax) + (abs $ xy - ay)
-      bTox = (abs $ xx - bx) + (abs $ xy - by)
-  in aTox > bTox
+count :: (a -> Bool) -> Grid a -> Int
+count f = length . filter id . flatten . fmap f
 
--- Center, is A behind B
-isBehind :: Coord -> Coord -> Coord -> Bool
-isBehind x a b = (gradient x a == gradient x b) && bigger x a b
+countVisible :: Grid Asteroid -> Coord -> Int
+countVisible asteroids center
+  | cell asteroids center == Empty = 0
+  | otherwise = count (visible asteroids center) (coords asteroids)
 
--- From a center, is A behind any B
-isHidden :: Coord -> Coord -> [Coord] -> Bool
-isHidden center a = any (isBehind center a)
-
-maxDim :: Grid -> Int
-maxDim = maximum . (\(a,b) -> [a,b]) . snd . bounds
-
-surroundings :: Grid -> Coord -> [[Coord]]
-surroundings grid center = reverse $ map (surrounding center) [1 .. maxDim grid]
-
-go :: Grid -> Coord -> [Coord] -> [Coord] -> [Coord]
-go grid center toCheck visible =
-  let asteroids = filter ((== Asteroid) . cell grid) toCheck
-      alsoVisible = filter (not . flip (isHidden center) visible) asteroids
-  in alsoVisible <> visible
-  
-visibleAsteroids :: Grid -> Coord -> [Coord]
-visibleAsteroids grid center = 
-  foldr (go grid center) [] (surroundings grid center)
-
-type Location = (Int, Coord)
-
-location :: Grid -> Coord -> Location
-location grid coord =
-  let num = length $ visibleAsteroids grid coord
-  in (num, coord)
-
-locationVisibility :: Grid -> [Location]
-locationVisibility grid =
-  [ location grid (a,b) | a <- [minX..maxX], b <- [minY..maxY], cell grid (a,b) == Asteroid ]
-  where ((minX, minY), (maxX, maxY)) = bounds grid
-
-cmp :: Location -> Location -> Ordering
-cmp (l1,_) (l2,_) = compare l1 l2
-
-bestLocation :: [Location] -> Location
-bestLocation = maximumBy cmp
+detect :: Grid Asteroid -> Grid Int
+detect asteroids = fmap (countVisible asteroids) (coords asteroids)
 
 main :: IO ()
 main = do
-  grid <- parseGrid <$> readFile "input"
-  print (bestLocation . locationVisibility $ grid)
+  asteroids <- parseGrid <$> readFile "input"
+  print (maximum (flatten (detect asteroids)))
 
-test :: IO ()
-test = test0 >> test1
+prettyPrint :: Show a => Grid a -> IO ()
+prettyPrint (Grid grid) = mapM_ print grid
 
 test0 :: IO ()
 test0 = do
-  grid <- parseGrid <$> readFile "testInput0"
-  let visibility = locationVisibility grid
-  mapM_ print (map fst visibility)
-  print (bestLocation visibility)
-
-test1 :: IO ()
-test1 = do
-  grid <- parseGrid <$> readFile "testInput1"
-  print (bestLocation . locationVisibility $ grid)
+  grid <- readFile "testInput0"
+  putStrLn grid
+  let asteroids = parseGrid grid
+  let fieldOfVision = fmap (visible asteroids (3,4)) (coords asteroids)
+  prettyPrint fieldOfVision
+  putStrLn "\n"
+  let fieldOfVision = fmap (visible asteroids (4,4)) (coords asteroids)
+  print (translate (4,4) (4,0))
+  print (between $ translate (4,4) (4,0))
+  print (betweens (4,4) (4,0))
+  print (visible asteroids (4,4) (4,0))
+  prettyPrint fieldOfVision
+  putStrLn "\n"
+  prettyPrint (detect asteroids)
+  print (maximum (flatten (detect asteroids)))
