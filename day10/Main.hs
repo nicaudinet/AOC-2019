@@ -93,6 +93,25 @@ countVisible asteroids center
 detect :: Grid Asteroid -> Grid Int
 detect asteroids = fmap (countVisible asteroids) (coords asteroids)
 
+type Angle = Float
+
+plusInfinity :: Angle
+plusInfinity = 10000000000000000
+
+minusInfinity :: Angle
+minusInfinity = negate plusInfinity
+
+gradient :: Coord -> Angle
+gradient (run,rise) = (fromIntegral rise) / (fromIntegral run)
+
+gatherVisible :: Grid Asteroid -> Coord -> [Coord]
+gatherVisible asteroids center
+  | cell asteroids center == Empty = []
+  | otherwise = filter (visible asteroids center) (flatten (coords asteroids))
+
+deltas :: Angle -> [Coord] -> [(Angle, Coord)]
+deltas angle cs =
+
 main :: IO ()
 main = do
   asteroids <- parseGrid <$> readFile "input"
