@@ -6,6 +6,7 @@ module Main where
 
 import Data.Bifunctor (bimap)
 import Data.List
+import Data.Ratio
 import Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 import Debug.Trace
@@ -95,22 +96,17 @@ detect asteroids = fmap (countVisible asteroids) (coords asteroids)
 
 type Angle = Float
 
-plusInfinity :: Angle
-plusInfinity = 10000000000000000
-
-minusInfinity :: Angle
-minusInfinity = negate plusInfinity
-
-gradient :: Coord -> Angle
-gradient (run,rise) = (fromIntegral rise) / (fromIntegral run)
+angle :: Coord -> Angle
+angle (0, _)  = pi / 2
+angle (run,rise) = atan ((fromIntegral rise) / (fromIntegral run))
 
 gatherVisible :: Grid Asteroid -> Coord -> [Coord]
 gatherVisible asteroids center
   | cell asteroids center == Empty = []
   | otherwise = filter (visible asteroids center) (flatten (coords asteroids))
 
-deltas :: Angle -> [Coord] -> [(Angle, Coord)]
-deltas angle cs =
+delta :: Angle -> Coord -> (Angle, Coord)
+delta angle (x,y) = undefined
 
 main :: IO ()
 main = do
