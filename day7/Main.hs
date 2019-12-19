@@ -137,13 +137,14 @@ parseModes modes =
 compute :: State -> State
 compute current =
   case eval current of
-    Just new -> compute new
-    Nothing  -> current
+    Left Nothing -> current
+    Left (Just (_, new)) -> compute new
+    Right new -> compute new
 
-eval :: State -> Maybe State
+eval :: State -> Either (Maybe (Int, State)) State
 eval state = go (parseInstr $ stateMemory state) state
   where
-    go :: Instr -> State -> Maybe State
+    go :: Instr -> State -> Either (Maybe (Int, State)) State
     go = \case
       Add v1 v2 out    -> evalAdd v1 v2 out
       Mul v1 v2 out    -> evalMul v1 v2 out
@@ -153,60 +154,61 @@ eval state = go (parseInstr $ stateMemory state) state
       JumpIfFalse c d  -> evalJumpIfFalse c d
       LessThan v1 v2 o -> evalLessThan v1 v2 o
       Equals v1 v2 o   -> evalEquals v1 v2 o
-      Halt             -> const Nothing
+      Halt             -> const (Left Nothing)
 
-evalAdd :: Value -> Value -> Int -> State -> Maybe State
+evalAdd :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
 evalAdd v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 + i2)]
-  in Just (State newMem (pc + 4) ioIn ioOut)
+  in Right (State newMem (pc + 4) ioIn ioOut)
     
-evalMul :: Value -> Value -> Int -> State -> Maybe State
+evalMul :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
 evalMul v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 * i2)]
-  in Just (State newMem (pc + 4) ioIn ioOut)
+  in Right (State newMem (pc + 4) ioIn ioOut)
 
-evalInput :: Int -> State -> Maybe State
+evalInput :: Int -> State -> Either (Maybe (Int, State)) State
 evalInput dest (State mem pc ioIn ioOut) =
   let newMem = mem // [(dest, head ioIn)]
-  in Just (State newMem (pc + 2) (tail ioIn) ioOut)
+  in Right (State newMem (pc + 2) (tail ioIn) ioOut)
 
-evalOutput :: Value -> State -> Maybe State
+evalOutput :: Value -> State -> Either (Maybe (Int, State)) State
 evalOutput val (State mem pc ioIn ioOut) =
-  Just (State mem (pc + 2) ioIn (fetch val mem : ioOut))
+  let output = fetch val mem
+  in Left (Just (output, (State mem (pc + 2) ioIn (output : ioOut))))
 
-evalJumpIfTrue :: Value -> Value -> State -> Maybe State
+evalJumpIfTrue :: Value -> Value -> State -> Either (Maybe (Int, State)) State
 evalJumpIfTrue c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  in Just (if cond /= 0 then trueState else falseState)
+  in Right (if cond /= 0 then trueState else falseState)
 
-evalJumpIfFalse :: Value -> Value -> State -> Maybe State
+evalJumpIfFalse :: Value -> Value -> State -> Either (Maybe (Int, State)) State
 evalJumpIfFalse c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  in Just (if cond == 0 then trueState else falseState)
+  in Right (if cond == 0 then trueState else falseState)
 
-evalLessThan :: Value -> Value -> Int -> State -> Maybe State
+evalLessThan :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
 evalLessThan v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 < i2 then 1 else 0)]
-  in Just (State newMem (pc + 4) ioIn ioOut)
+  in Right (State newMem (pc + 4) ioIn ioOut)
 
-evalEquals :: Value -> Value -> Int -> State -> Maybe State
+evalEquals :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
 evalEquals v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
-  in Just (State newMem (pc + 4) ioIn ioOut)
+  in Right (State newMem (pc + 4) ioIn ioOut)
 
 -- * Amp things (part 1)
 
@@ -222,10 +224,6 @@ maxSignal :: Array -> Int
 maxSignal array = maximum $ map (ampChain array) (permutations [0..4])
 
 -- * Amp things (part 2)
-
-amplifier :: State -> Int -> Int -> (Int, State)
-amplifier (State mem pc ioIn ioOut) phase inputSignal =
-  let 
 
 -- * Main
 
