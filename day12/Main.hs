@@ -6,7 +6,7 @@ data Moon = Moon (Int, Int) (Int, Int) (Int, Int)
 
 instance Show Moon where
   show (Moon (px,vx) (py,vy) (pz,vz))
-    =  "Pos: (" <> show px <> "," <> show py <> "," <> show pz <> ") "
+    =  "Pos: (" <> show px <> "," <> show py <> "," <> show pz <> ")\t"
     <> "Vel: (" <> show vx <> "," <> show vy <> "," <> show vz <> ")"
 
 type System = [Moon]
@@ -50,6 +50,9 @@ energy = sum . map go
 simulate :: System -> Int -> System
 simulate system timesteps = iterate (step . gravity) system !! timesteps
 
+simulateAll :: System -> Int -> [System]
+simulateAll system timesteps = take (succ timesteps) (iterate (step . gravity) system)
+
 initMoon :: (Int, Int, Int) -> Moon
 initMoon (x,y,z) = Moon (x,0) (y,0) (z,0)
 
@@ -74,14 +77,18 @@ testSystem =
 
 test :: IO ()
 test = do
-  mapM_ print (gravity testSystem)
+  mapM_ print testSystem
   putStrLn "--"
-  mapM_ print (step $ gravity testSystem)
+  mapM_ print (simulate testSystem 120)
   putStrLn "--"
-  mapM_ print (simulate testSystem 1)
+  mapM_ print (simulate testSystem 240)
   putStrLn "--"
-  mapM_ print (simulate testSystem 10)
+  mapM_ print (simulate testSystem 360)
   putStrLn "--"
-  print (energy $ simulate testSystem 10)
+  mapM_ print (simulate testSystem 1386)
   putStrLn "--"
-  print (energy $ simulate testSystem 100)
+  mapM_ print (simulate testSystem 1560)
+  putStrLn "--"
+  mapM_ print (simulate testSystem 2772)
+  -- putStrLn "--"
+  -- print (filter (== 0) . map energy $ simulateAll testSystem 2772)
