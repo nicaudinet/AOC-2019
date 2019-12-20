@@ -64,31 +64,48 @@ initSystem =
   , initMoon (-11,17,-1)
   ]
 
+type SimpleSystem = [SimpleMoon]
+type SimpleMoon = (Int, Int)
+
+simpleStep :: SimpleSystem -> SimpleSystem
+simpleStep = map (\(p,v) -> (p+v,v))
+
+simpleGravity :: SimpleSystem -> SimpleSystem
+simpleGravity system = map (accelerate system) system
+  where
+    accelerate :: SimpleSystem -> SimpleMoon -> SimpleMoon
+    accelerate system moon = foldr second moon (map (foo moon) system)
+
+    foo :: SimpleMoon -> SimpleMoon -> (Int -> Int)
+    foo (px, vx) (py, vy)
+      | px == py = id
+      | px >  py = pred
+      | px <  py = succ
+
+stopSame :: SimpleSystem -> Int
+stopSame system = go system system 0
+  where
+    go :: SimpleSystem -> SimpleSystem -> Int -> Int
+    go current initSystem counter =
+      let next = simpleStep (simpleGravity current)
+      in 
+        if next == initSystem
+        then counter + 1
+        else go next initSystem (counter + 1)
+
+xs :: SimpleSystem
+xs = [(4,0),(-9,0),(-7,0),(-11,0)]
+
+ys :: SimpleSystem
+ys = [(12,0),(14,0),(-1,0),(17,0)]
+
+zs :: SimpleSystem
+zs = [(13,0),(-3,0),(2,0),(-1,0)]
+
 main :: IO ()
-main = print (energy $ simulate initSystem 1000)
-
-testSystem :: System
-testSystem =
-  [ initMoon (-1,0,2)
-  , initMoon (2,-10,-7)
-  , initMoon (4,-8,8)
-  , initMoon (3,5,-1)
-  ]
-
-test :: IO ()
-test = do
-  mapM_ print testSystem
-  putStrLn "--"
-  mapM_ print (simulate testSystem 120)
-  putStrLn "--"
-  mapM_ print (simulate testSystem 240)
-  putStrLn "--"
-  mapM_ print (simulate testSystem 360)
-  putStrLn "--"
-  mapM_ print (simulate testSystem 1386)
-  putStrLn "--"
-  mapM_ print (simulate testSystem 1560)
-  putStrLn "--"
-  mapM_ print (simulate testSystem 2772)
-  -- putStrLn "--"
-  -- print (filter (== 0) . map energy $ simulateAll testSystem 2772)
+main = do
+  print (energy $ simulate initSystem 1000)
+  let x = stopSame xs
+      y = stopSame ys
+      z = stopSame zs
+  print (lcm x (lcm y z))

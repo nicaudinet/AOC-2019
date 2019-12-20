@@ -22,4 +22,5 @@ executable day12
   -- other-extensions:
   build-depends:       base >=4.12 && <4.13
   -- hs-source-dirs:
+  ghc-options: -O2
   default-language:    Haskell2010
