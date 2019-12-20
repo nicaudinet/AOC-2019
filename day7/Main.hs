@@ -38,7 +38,12 @@ data State = State
   , statePC     :: PC
   , stateInput  :: IOBuffer
   , stateOutput :: IOBuffer
-  }
+  } deriving Show
+
+data Result
+  = Running State
+  | Paused  State
+  | Halted  State
 
 fetch :: Value -> Array -> Int
 fetch (Value addr Position) mem = mem ! addr
@@ -137,14 +142,14 @@ parseModes modes =
 compute :: State -> State
 compute current =
   case eval current of
-    Left Nothing -> current
-    Left (Just (_, new)) -> compute new
-    Right new -> compute new
+    Halted _    -> current
+    Paused new  -> compute new
+    Running new -> compute new
 
-eval :: State -> Either (Maybe (Int, State)) State
+eval :: State -> Result
 eval state = go (parseInstr $ stateMemory state) state
   where
-    go :: Instr -> State -> Either (Maybe (Int, State)) State
+    go :: Instr -> State -> Result
     go = \case
       Add v1 v2 out    -> evalAdd v1 v2 out
       Mul v1 v2 out    -> evalMul v1 v2 out
@@ -154,61 +159,60 @@ eval state = go (parseInstr $ stateMemory state) state
       JumpIfFalse c d  -> evalJumpIfFalse c d
       LessThan v1 v2 o -> evalLessThan v1 v2 o
       Equals v1 v2 o   -> evalEquals v1 v2 o
-      Halt             -> const (Left Nothing)
+      Halt             -> Halted
 
-evalAdd :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
+evalAdd :: Value -> Value -> Int -> State -> Result
 evalAdd v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 + i2)]
-  in Right (State newMem (pc + 4) ioIn ioOut)
+  in Running (State newMem (pc + 4) ioIn ioOut)
     
-evalMul :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
+evalMul :: Value -> Value -> Int -> State -> Result
 evalMul v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, i1 * i2)]
-  in Right (State newMem (pc + 4) ioIn ioOut)
+  in Running (State newMem (pc + 4) ioIn ioOut)
 
-evalInput :: Int -> State -> Either (Maybe (Int, State)) State
+evalInput :: Int -> State -> Result
 evalInput dest (State mem pc ioIn ioOut) =
   let newMem = mem // [(dest, head ioIn)]
-  in Right (State newMem (pc + 2) (tail ioIn) ioOut)
+  in Running (State newMem (pc + 2) (tail ioIn) ioOut)
 
-evalOutput :: Value -> State -> Either (Maybe (Int, State)) State
+evalOutput :: Value -> State -> Result
 evalOutput val (State mem pc ioIn ioOut) =
-  let output = fetch val mem
-  in Left (Just (output, (State mem (pc + 2) ioIn (output : ioOut))))
+  Paused (State mem (pc + 2) ioIn (fetch val mem : ioOut))
 
-evalJumpIfTrue :: Value -> Value -> State -> Either (Maybe (Int, State)) State
+evalJumpIfTrue :: Value -> Value -> State -> Result
 evalJumpIfTrue c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  in Right (if cond /= 0 then trueState else falseState)
+  in Running (if cond /= 0 then trueState else falseState)
 
-evalJumpIfFalse :: Value -> Value -> State -> Either (Maybe (Int, State)) State
+evalJumpIfFalse :: Value -> Value -> State -> Result
 evalJumpIfFalse c d (State mem pc ioIn ioOut) =
   let cond = fetch c mem
       dest = fetch d mem
       trueState  = State mem dest ioIn ioOut
       falseState = State mem (pc + 3) ioIn ioOut
-  in Right (if cond == 0 then trueState else falseState)
+  in Running (if cond == 0 then trueState else falseState)
 
-evalLessThan :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
+evalLessThan :: Value -> Value -> Int -> State -> Result
 evalLessThan v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 < i2 then 1 else 0)]
-  in Right (State newMem (pc + 4) ioIn ioOut)
+  in Running (State newMem (pc + 4) ioIn ioOut)
 
-evalEquals :: Value -> Value -> Int -> State -> Either (Maybe (Int, State)) State
+evalEquals :: Value -> Value -> Int -> State -> Result
 evalEquals v1 v2 dest (State mem pc ioIn ioOut) =
   let i1 = fetch v1 mem
       i2 = fetch v2 mem
       newMem = mem // [(dest, if i1 == i2 then 1 else 0)]
-  in Right (State newMem (pc + 4) ioIn ioOut)
+  in Running (State newMem (pc + 4) ioIn ioOut)
 
 -- * Amp things (part 1)
 
@@ -225,6 +229,33 @@ maxSignal array = maximum $ map (ampChain array) (permutations [0..4])
 
 -- * Amp things (part 2)
 
+run :: State -> Either State State
+run current =
+  case eval current of
+    Running new -> run new
+    Paused  new -> Right new
+    Halted  new -> Left new
+
+addInput :: Int -> State -> State
+addInput input (State mem pc ioIn ioOut) = State mem pc (input : ioIn) ioOut
+
+initAmp :: Array -> Int -> State
+initAmp array phase = State array 0 [phase] []
+
+chain :: State -> State -> State
+chain (State _ _ _ (o:_)) (State mem pc ioIn ioOut) =
+  State mem pc (o : ioIn) ioOut
+
+loop :: Int -> [State] -> Int
+loop input (state : rest) =
+  case run (addInput input state) of
+    Right new -> loop (head $ stateOutput new) (rest <> [new])
+    Left  new -> input
+
+maxFeedbackSignal :: Array -> Int
+maxFeedbackSignal array =
+  maximum $ map (loop 0 . map (initAmp array)) (permutations [5..9])
+
 -- * Main
 
 getInput :: IO Array
@@ -232,3 +263,17 @@ getInput = fromList <$> parseContents <$> readFile "input"
 
 main :: IO ()
 main = getInput >>= print . maxSignal
+
+test :: IO ()
+test = do
+  let array = fromList
+        [3,26,1001,26,-4,26,3,27,1002,27,2,27,1,27,26, 27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5]
+      initState = State array 0 [5,0] []
+      Right s1 = run initState
+      Right s2 = run (chain s1 s1)
+      s3 = run (chain s2 s2)
+  print s1
+  print s2
+  print s3
+  print (maxFeedbackSignal array)
+  print $ loop 0 $ map (initAmp array) [9,8,7,6,5]
