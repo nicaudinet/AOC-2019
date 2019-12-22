@@ -2,12 +2,15 @@ module Main where
 
 import IntCode
 import qualified Data.Map as M
+import qualified Data.Vector as V (replicate)
+import Data.List (unfoldr)
+import Data.Maybe (fromMaybe)
+import Debug.Trace
 
-data Panel = Black | White deriving Eq
-type Hull = M.Map Pos Panel
-data Direction = U | D | L | R
+type Hull = M.Map Pos Integer
+data Direction = U | D | L | R deriving Show
 type Pos = (Int,Int)
-type RobotState = (ComputerState, Direction, Pos)
+type RobotState = (ComputerState, Direction, Pos, Hull)
 
 turnRight :: Direction -> Direction
 turnRight U = R
@@ -23,39 +26,64 @@ turnLeft R = U
 
 forward :: Pos -> Direction -> Pos
 forward (x,y) U = (x, succ y)
-forward (x,y) R = (succ x, y)
 forward (x,y) D = (x, pred y)
+forward (x,y) R = (succ x, y)
 forward (x,y) L = (pred x, y)
 
-panel :: Pos -> Hull -> Panel
-panel pos hull = maybe Black id (hull M.!? pos)
+detect :: Pos -> Hull -> Integer
+detect pos hull = fromMaybe 0 (hull M.!? pos)
 
 initRobot :: Array -> RobotState
-initRobot program =
-  let cpuState = ComputerState program 0 [0] [] 0 Running
-  in (cpuState, U, (0,0))
+initRobot program = (initState program, U, (0,0), mempty)
 
-runRobot :: RobotState -> Hull -> Hull
-runRobot robot initHull = undefined
+runRobot :: RobotState -> [Hull]
+runRobot = take 10 . unfoldr step
 
-step :: RobotState -> Hull -> (RobotState, Hull)
-step (robot, dir, pos) hull =
-  let input = if panel pos hull == Black then 0 else 1
-      res1 = run (robot { stateInput = input : (stateInput robot) })
-      paint = head (stateOutput res1)
-      res2 = run (res1)
-      nextDir = if head (stateOutput res2) == 0 then turnLeft dir else turnRight dir
-      nextPos = forward pos nextDir
-  in ((res2, nextDir, nextPos), M.insert pos (if paint == 0 then Black else White) hull)
+step :: RobotState -> Maybe (Hull, RobotState)
+step (robot, dir, pos, hull) =
+  trace "----------" $
+  trace ("Initial Direction: " <> show dir) $
+  trace ("Intiial Position: " <> show pos) $
+  trace ("Initial Hull: " <> show hull) $
+  let panel = detect pos hull
+      paintState = run (robot { stateInput = [panel] })
+  in
+    if status paintState == Halted
+    then Nothing
+    else
+      let nextHull = M.insert pos (getOutput paintState) hull
+          dirState = run paintState
+      in
+        if status dirState == Halted
+        then Nothing
+        else
+          let nextDir = if getOutput dirState == 0 then turnLeft dir else turnRight dir
+              nextPos = forward pos nextDir
+              nextState = (dirState, nextDir, nextPos, nextHull)
+          in
+            trace "--" $
+            trace ("Panel Input Value: " <> show panel) $
+            trace ("Paint Output Value: " <> show (getOutput paintState)) $
+            trace ("Direction Output Value: " <> show (getOutput dirState)) $
+            trace "--" $
+            trace ("Final Direction: " <> show nextDir) $
+            trace ("Final Position: " <> show nextPos) $
+            trace ("Final Hull: " <> show nextHull) $
+            Just (nextHull, nextState)
 
-getProgram :: IO Array
-getProgram = parseContents <$> readFile "input"
+getOutput :: ComputerState -> Integer
+getOutput = head . stateOutput
 
 main :: IO ()
 main = do
-  program <- getProgram
-  let initState = ComputerState program 0 [0] [] 0 Running
-      result = run initState
-  print (status result)
-  print (stateInput result)
-  print (stateOutput result)
+  program <- parseContents <$> readFile "input"
+  let finishedHull = runRobot (initRobot program)
+  --print (length $ M.keys finishedHull)
+  print (length finishedHull)
+
+test :: IO ()
+test = do
+  program <- parseContents <$> readFile "inputDay9"
+  let initState = ComputerState (program <> V.replicate 1000 0) 0 [1] [] 0 Running
+  print (head . stateOutput $ run initState)
+  print (status $ run initState)

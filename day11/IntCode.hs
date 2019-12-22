@@ -61,6 +61,10 @@ data ComputerState = ComputerState
 type Computer = State ComputerState
 type Computation = Computer ()
 
+initState :: Array -> ComputerState
+initState program =
+  ComputerState (program <> replicate 1000 0) 0 [] [] 0 Running
+
 stateMemory :: ComputerState -> Memory
 stateMemory state =
   (stateArray state, statePC state)
@@ -242,13 +246,10 @@ parseRB mode (mem, pc) =
 
 -- | Running the program
 
-fixState :: Computation -> ComputerState -> ComputerState
-fixState computation current =
-  let next = execState computation current
-  in if isRunning next then fixState computation next else next
-
 run :: ComputerState -> ComputerState
-run = fixState compute
+run current =
+  let next = execState compute current
+  in if not (isRunning next) then next else run next
 
 compute :: Computation
 compute = fmap parseInstr (gets stateMemory) >>= \case
@@ -335,16 +336,3 @@ evalHalt :: Computation
 evalHalt = do
   state <- get
   put (state { status = Halted })
-
--- * Main
-
-memorySize :: Int
-memorySize = 1000
-
---main :: IO ()
---main = do
-  --mem <- (<> replicate memorySize 0) <$> getInput
-  --let initComputerState1 = ComputerState mem 0 [1] [] 0 Running
-  --let initComputerState2 = ComputerState mem 0 [2] [] 0 Running
-  --print (reverse . stateOutput $ run initComputerState1)
-  --print (reverse . stateOutput $ run initComputerState2)
