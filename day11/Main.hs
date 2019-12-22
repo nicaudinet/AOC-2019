@@ -7,10 +7,11 @@ import Data.List (unfoldr)
 import Data.Maybe (fromMaybe)
 import Debug.Trace
 
-type Hull = M.Map Pos Integer
+type Hull = M.Map Pos Color
 data Direction = U | D | L | R deriving Show
 type Pos = (Int,Int)
 type RobotState = (ComputerState, Direction, Pos, Hull)
+data Color = Black | White deriving Eq
 
 turnRight :: Direction -> Direction
 turnRight U = R
@@ -24,51 +25,64 @@ turnLeft L = D
 turnLeft D = R
 turnLeft R = U
 
+turn :: Integer -> Direction -> Direction
+turn 0 = turnLeft
+turn 1 = turnRight
+turn _ = error "A wrong turn has occurred"
+
 forward :: Pos -> Direction -> Pos
 forward (x,y) U = (x, succ y)
 forward (x,y) D = (x, pred y)
 forward (x,y) R = (succ x, y)
 forward (x,y) L = (pred x, y)
 
-detect :: Pos -> Hull -> Integer
-detect pos hull = fromMaybe 0 (hull M.!? pos)
+colorToNum :: Num a => Color -> a
+colorToNum Black = 0
+colorToNum White = 1
+
+numToColor :: (Eq a, Num a) => a -> Color
+numToColor 0 = Black
+numToColor 1 = White
+
+detect :: Pos -> Hull -> Color
+detect pos hull = fromMaybe Black (hull M.!? pos)
 
 initRobot :: Array -> RobotState
 initRobot program = (initState program, U, (0,0), mempty)
 
-runRobot :: RobotState -> [Hull]
-runRobot = take 10 . unfoldr step
+runRobot :: RobotState -> Hull
+runRobot = last . unfoldr step
 
 step :: RobotState -> Maybe (Hull, RobotState)
 step (robot, dir, pos, hull) =
-  trace "----------" $
-  trace ("Initial Direction: " <> show dir) $
-  trace ("Intiial Position: " <> show pos) $
-  trace ("Initial Hull: " <> show hull) $
+  --trace "----------" $
+  --trace ("Initial Direction: " <> show dir) $
+  --trace ("Intiial Position: " <> show pos) $
+  --trace ("Initial Hull: " <> show hull) $
   let panel = detect pos hull
-      paintState = run (robot { stateInput = [panel] })
+      robot1 = run (robot { stateInput = [colorToNum panel] })
   in
-    if status paintState == Halted
+    if status robot1 == Halted
     then Nothing
     else
-      let nextHull = M.insert pos (getOutput paintState) hull
-          dirState = run paintState
+      let nextHull = M.insert pos (numToColor $ getOutput robot1) hull
+          robot2 = run robot1
       in
-        if status dirState == Halted
+        if status robot2 == Halted
         then Nothing
         else
-          let nextDir = if getOutput dirState == 0 then turnLeft dir else turnRight dir
+          let nextDir = turn (getOutput robot2) dir
               nextPos = forward pos nextDir
-              nextState = (dirState, nextDir, nextPos, nextHull)
+              nextState = (robot2, nextDir, nextPos, nextHull)
           in
-            trace "--" $
-            trace ("Panel Input Value: " <> show panel) $
-            trace ("Paint Output Value: " <> show (getOutput paintState)) $
-            trace ("Direction Output Value: " <> show (getOutput dirState)) $
-            trace "--" $
-            trace ("Final Direction: " <> show nextDir) $
-            trace ("Final Position: " <> show nextPos) $
-            trace ("Final Hull: " <> show nextHull) $
+            --trace "--" $
+            --trace ("Panel Input Value: " <> show panel) $
+            --trace ("Paint Output Value: " <> show (getOutput paintState)) $
+            --trace ("Direction Output Value: " <> show (getOutput dirState)) $
+            --trace "--" $
+            --trace ("Final Direction: " <> show nextDir) $
+            --trace ("Final Position: " <> show nextPos) $
+            --trace ("Final Hull: " <> show nextHull) $
             Just (nextHull, nextState)
 
 getOutput :: ComputerState -> Integer
@@ -78,8 +92,8 @@ main :: IO ()
 main = do
   program <- parseContents <$> readFile "input"
   let finishedHull = runRobot (initRobot program)
-  --print (length $ M.keys finishedHull)
-  print (length finishedHull)
+  print (M.size finishedHull)
+  --print (length finishedHull)
 
 test :: IO ()
 test = do
