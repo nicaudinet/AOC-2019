@@ -39,7 +39,7 @@ data Instr
   | RB InValue
   | Halt
 
-data Status = Running | Halted | Paused
+data Status = Running | Halted | Reading
   deriving (Eq, Show)
 
 type Modes = String
@@ -123,10 +123,10 @@ incRB increment = do
 isRunning :: ComputerState -> Bool
 isRunning state = status state == Running
 
-pause :: Computer ()
-pause = do
+getInput :: Computer ()
+getInput = do
   state <- get
-  put (state { status = Paused })
+  put (state { status = Reading })
 
 -- * Parsing the instructions
 
@@ -287,11 +287,14 @@ evalMul v1 v2 v3 = do
 
 evalInput :: OutValue -> Computation
 evalInput value = do
-  dest <- fetchOut value
-  input <- consume
-  update (dest, input)
-  incPC 2
-  pause
+  stat <- gets status
+  case stat of
+    Running -> getInput
+    Reading -> do
+      dest <- fetchOut value
+      input <- consume
+      update (dest, input)
+      incPC 2
 
 evalOutput :: InValue -> Computation
 evalOutput val = do

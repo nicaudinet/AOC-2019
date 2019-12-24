@@ -2,6 +2,8 @@ module Main where
 
 import IntCode
 
+import Control.Monad
+import System.Console.ANSI (clearScreen)
 import Data.List
 import qualified Data.Map as M
 
@@ -12,7 +14,7 @@ type Display =M.Map Pos Tile
 type Screen = (Int, Display)
 type ArcadeState = (ComputerState, Screen)
 
-data JoyStick = L | R
+data JoyStick = L | R | N
 
 intToTile :: Int -> Tile
 intToTile 0 = Empty
@@ -28,6 +30,16 @@ tileToChar Wall = '%'
 tileToChar Block = '#'
 tileToChar Paddle = '_'
 tileToChar Ball = '*'
+
+charToJoyStick :: Char -> JoyStick
+charToJoyStick 'j' = L
+charToJoyStick 'l' = R
+charToJoyStick _   = N
+
+joyStickToInteger :: JoyStick -> Integer
+joyStickToInteger L = -1
+joyStickToInteger N = 0
+joyStickToInteger R = 1
 
 buildScreen :: [Int] -> Screen
 buildScreen output = go output (0, mempty)
@@ -66,12 +78,25 @@ toGridDisplay
     sameY :: ((Int,Int),Tile) -> ((Int,Int),Tile) -> Bool
     sameY ((_,y1),_) ((_,y2),_) = y1 == y2
 
+step :: ComputerState -> IO ComputerState
+step state = do
+  joystick <- charToJoyStick <$> getChar
+  let newState = run (state { stateInput = [joyStickToInteger joystick], status = Running })
+      output = reverse . map fromInteger . stateOutput $ newState
+      screen = buildScreen output
+  clearScreen
+  putStrLn (drawScreen screen)
+  pure newState
+
+loop :: (a -> IO a) -> a -> IO a
+loop f a = foldM (flip ($)) a (repeat f)
+
 main :: IO ()
 main = do
   program <- parseContents <$> readFile "input"
-  let finishedState = run (initState program)
-      output = reverse . map fromInteger . stateOutput $ finishedState
-      screen = buildScreen output
-  print (length . filter (== Block) . M.elems . snd $ screen)
-  putStrLn (drawScreen screen)
-  print (map (map fst) . toGridDisplay $ snd screen)
+  next0 <- step (initState program)
+  next1 <- step next0
+  next2 <- step next1
+  next3 <- step next2
+  next4 <- step next3
+  pure ()
