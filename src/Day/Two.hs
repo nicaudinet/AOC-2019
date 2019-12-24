@@ -1,4 +1,4 @@
-module Main where
+module Day.Two where
 
 import Data.List (find)
 import Data.Vector (Vector, fromList, (!), (//))
@@ -46,10 +46,13 @@ search mem =
       Just (n, v, _) = find isResult outputs
   in (n, v)
 
-main :: IO ()
-main = do
-  contents <- readFile "input"
-  let program = parse contents
-  print (run (fix program))
+part1 :: IO Int
+part1 = do
+  program <- parse <$> readFile "inputs/day2"
+  pure (run (fix program))
+
+part2 :: IO Int
+part2 = do
+  program <- parse <$> readFile "inputs/day2"
   let (n, v) = search program
-  print (100 * n + v)
+  pure (100 * n + v)
