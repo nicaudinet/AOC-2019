@@ -1,4 +1,4 @@
-module Main where
+module Day.Four where
 
 import Data.List (sort, group)
 
@@ -14,7 +14,10 @@ alwaysIncreasing n = let n' = show n in sort n' == n'
 hasOnlyDoubleDigit :: Int -> Bool
 hasOnlyDoubleDigit = not . null . filter (== 2) . map length . group . show
 
-main :: IO ()
-main = do
-  print (length [ x | x <- input, alwaysIncreasing x, hasDoubleDigit x ])
-  print (length [ x | x <- input, alwaysIncreasing x, hasOnlyDoubleDigit x ])
+part1 :: IO Int
+part1 =
+  pure (length [ x | x <- input, alwaysIncreasing x, hasDoubleDigit x ])
+
+part2 :: IO Int
+part2 =
+  pure (length [ x | x <- input, alwaysIncreasing x, hasOnlyDoubleDigit x ])

@@ -17,6 +17,8 @@ build-type:          Simple
 extra-source-files:
   inputs/day1
   inputs/day2
+  inputs/day3
+  -- inputs/day4
 
 library
   default-language:
@@ -29,6 +31,7 @@ library
     Day.One
     Day.Two
     Day.Three
+    Day.Four
   build-depends:
       base >=4.12 && <4.13
     , containers
