@@ -28,9 +28,12 @@ library
   exposed-modules:
     Day.One
     Day.Two
+    Day.Three
   build-depends:
       base >=4.12 && <4.13
+    , containers
     , mtl
+    , split
     , vector
 
 executable aoc

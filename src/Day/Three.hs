@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedLists #-}
 
-module Main where
+module Day.Three where
 
 import Data.List (foldl')
 import Data.List.Split (splitOn)
@@ -82,11 +82,13 @@ test2 = do
   let w2 = parse "U7,R6,D4,L4"
   print (minSteps w1 w2) -- should be 30
 
-main :: IO ()
-main = do
-  [a, b] <- lines <$> readFile "input"
-  let w1 = parse a
-      w2 = parse b
-      xs = crossings w1 w2
-  print (minDistance xs)
-  print (minSteps w1 w2)
+part1 :: IO Int
+part1 = do
+  [a, b] <- lines <$> readFile "inputs/day3"
+  let xs = crossings (parse a) (parse b)
+  pure (minDistance xs)
+
+part2 :: IO Int
+part2 = do
+  [a, b] <- lines <$> readFile "inputs/day3"
+  pure (minSteps (parse a) (parse b))

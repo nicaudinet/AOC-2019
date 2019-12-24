@@ -1,7 +1,8 @@
 module Main where
 
-import qualified Day.One as D01
-import qualified Day.Two as D02
+import qualified Day.One   as D01
+import qualified Day.Two   as D02
+import qualified Day.Three as D03
 
 main :: IO ()
 main = do
@@ -11,3 +12,6 @@ main = do
   putStrLn "Day 2:"
   print =<< D02.part1
   print =<< D02.part2
+  putStrLn "Day 3:"
+  print =<< D03.part1
+  print =<< D03.part2
