@@ -1,4 +1,4 @@
-module Main where
+module Day.One where
 
 import Data.List (unfoldr)
 
@@ -16,8 +16,12 @@ fuelFuel = sum . unfoldr fuel
 totalFuel :: Int -> Int
 totalFuel x = moduleFuel x + fuelFuel (moduleFuel x)
 
-main :: IO ()
-main = do
-  modules <- map read . lines <$> readFile "input"
-  print (sum $ map moduleFuel modules)
-  print (sum $ map totalFuel modules)
+part1 :: IO Int
+part1 = do
+  modules <- map read . lines <$> readFile "inputs/day1"
+  pure (sum $ map moduleFuel modules)
+
+part2 :: IO Int
+part2 = do
+  modules <- map read . lines <$> readFile "inputs/day1"
+  pure (sum $ map totalFuel modules)
